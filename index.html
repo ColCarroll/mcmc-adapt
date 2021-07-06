@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>MCMC Adaptation</title>
+    <link rel="stylesheet" href="css/tufte.css" />
+    <link rel="stylesheet" href="css/latex.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-MML-AM_CHTML' async>
+    </script>
+    <style type="text/css">
+        /* Overrides for Google-code-prettify */
+        pre.prettyprint {
+            font-family: Consolas, Monaco, Lucida Console, Liberation Mono, DejaVu Sans Mono, Bitstream Vera Sans Mono, Courier New;
+            padding: 10px;
+            padding-left: 1.5% !important;
+            border: 1px solid #196786;
+            background: aliceblue;
+        }
+
+        video {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+
+    <script src="https://cdn.rawgit.com/google/code-prettify/master/loader/run_prettify.js" async></script>
+
+</head>
+
+<body>
+    <article>
+        <div class=title style="display: inline-block">
+            <h1>Adaptation in gradient-based Markov chain Monte Carlo</h1>
+            <h2 class="subtitle">What makes MCMC <b>fast</b>?</h2>
+            <p class="subtitle"><a href="https://colindcarroll.com">Colin Carroll</a></p>
+        </div>
+        <section>
+            <h2>Introduction</h2>
+            <p>
+                The goal of this page is to give visual intuition and best practices for some of the tuning done in
+                gradient-based MCMC algorithms, while providing links to papers or other works that give more rigorous,
+                careful results.
+            </p>
+        </section>
+        <section>
+            <h2>Hamiltonian Trajectories</h2>
+            <p>
+                Given a (differentiable) target probability distribution, \(\pi\), an initial position \(\mathbf{q}\)
+                and an initial momentum \(\mathbf{p}\), we may solve a certain differential equation
+                <label for="sn-hmc" class="margin-toggle sidenote-number"></label>
+                <input type="checkbox" id="sn-hmc" class="margin-toggle" />
+                <span class="sidenote">The differential equations are
+                    $$
+                    \begin{align}
+                    \frac{d \mathbf{q}}{dt} &= M^{-1}\mathbf{p} \\
+                    \frac{d \mathbf{p}}{dt} &= - \frac{\partial}{\partial \mathbf{q}} \log \pi,
+                    \end{align}
+                    $$
+                    where \(M\) is the <em>mass matrix</em> that we discuss later.
+                </span>
+                to generate Hamiltonian trajectories:
+                <figure>
+                    <video playsinline autoplay muted loop>
+                        <source src="img/long_trajectory.mp4" type="video/mp4" />
+                    </video>
+                    <caption>The underlying distribution here is a mixture of three Gaussians. The trajectory is being
+                        integrated for 1,000 timesteps with a fairly small step size.</caption>
+                </figure>
+            </p>
+        </section>
+        <section>
+            <h2>Hamiltonian Monte Carlo</h2>
+            <p>
+                If we integrate each trajectory for a fixed length
+                <label for="sn-nuts" class="margin-toggle sidenote-number"></label>
+                <input type="checkbox" id="sn-nuts" class="margin-toggle" />
+                <span class="sidenote">You can also use a dynamic length if you are careful! See <a
+                        href="https://arxiv.org/abs/1111.4246">The No-U-Turn sampler: adaptively setting path lengths in
+                        Hamiltonian Monte Carlo</a> by Hoffman and Gelman. This NUTS algorithm is the basis for
+                    libraries like <a href="https://mc-stan.org/">Stan</a> and <a href="http://docs.pymc.io/">PyMC3</a>.
+                </span>
+                and then resample the momentum, the stationary distribution for the endpoints of the
+                trajectories is \(\pi\), our target distribution.
+            </p>
+            <p>Note that we have not yet talked about <i>how</i> to integrate these trajectories, we are just talking
+                about a world in which we could.</p>
+            <figure>
+                <video playsinline autoplay muted loop>
+                    <source src="img/hmc.mp4" type="video/mp4" />
+                </video>
+                <caption>
+                    This is 20 draws from the same mixture of Gaussians, using a trajectory length of 2. Notice it
+                    takes a really energetic momentum draw in the right direction to jump between modes.
+                </caption>
+            </figure>
+
+        </section>
+
+        <section>
+            <h2>The leapfrog integrator</h2>
+            <p>
+                Of course, we need to think about how to solve the differential equation from earlier.
+                <label for="sn-hmc-again" class="margin-toggle sidenote-number"></label>
+                <input type="checkbox" id="sn-hmc-again" class="margin-toggle" />
+                <span class="sidenote">As a reminder,
+                    $$
+                    \begin{align}
+                    \frac{d \mathbf{q}}{dt} &= M^{-1}\mathbf{p} \\
+                    \frac{d \mathbf{p}}{dt} &= - \frac{\partial}{\partial \mathbf{q}} \log \pi,
+                    \end{align}
+                    $$
+                    \(\mathbf{q}\) is position, \(\mathbf{p}\) is momentum, \(\pi\) is our target distribution, and
+                    \(M\) is the <em>mass matrix</em> that we discuss later.
+                </span>
+                For one thing, we will be using a <a href="https://en.wikipedia.org/wiki/Leapfrog_integration">leapfrog
+                    integrator</a>, which is a second order integrator. Here it is on our toy distribution, compared
+                with (in red) Euler's method.
+            </p>
+            <figure>
+                <video playsinline autoplay muted loop>
+                    <source src="img/newton_long_trajectory.mp4" type="video/mp4" />
+                </video>
+                <caption>
+                    This is the same trajectory from earlier, where black is (close to) the true trajectory, and red
+                    uses Euler's method, a first-order integrator. More specifically, black uses a leapfrog
+                    integrator, and both use step size 0.05 for 1,000 steps.
+                </caption>
+            </figure>
+            <p>We can compare this to a leapfrog integrator with even a very large step size, where the errors will not
+                compound, though there is eventually some very obvious differences in the trajectories!</p>
+            <figure>
+                <video playsinline autoplay muted loop>
+                    <source src="img/change_int_len.mp4" type="video/mp4" />
+                </video>
+                <caption>This time the red line uses a leapfrog integrator uses a step size of 0.25 for 200 steps, so it
+                    is also five times faster to compute. Also worth reflecting that while integrating the Hamiltonian
+                    perfectly means we will accept the proposed state, our goal is to propose far away samples with a
+                    high probability of acceptance -- not to integrate the Hamiltonian!
+                </caption>
+            </figure>
+        </section>
+
+        <section>
+            <h2>Choosing a step size</h2>
+            <p>
+                We ignore here how long to integrate
+                <label for="sn-integration-length" class="margin-toggle sidenote-number"></label>
+                <input type="checkbox" id="sn-integration-length" class="margin-toggle" />
+                <span class="sidenote">
+                    An active area of research! <a href="https://arxiv.org/abs/1111.4246">NUTS</a> is commonly used, and
+                    has a dynamic trajectory length, but will end up costing about twice as much as using HMC with a
+                    fixed step size. Other approaches are <a
+                        href="http://proceedings.mlr.press/v130/hoffman21a/hoffman21a.pdf">ChEES-HMC</a>, which seeks to
+                    automatically adapt HMC's trajectory length, or <a href="https://arxiv.org/abs/1810.04449">empirical
+                        HMC</a> which uses a fixed distribution of trajectory lengths.
+                </span>,
+                but will focus on the step size being used. It turns out that HMC speed will scale linearly with the
+                <em>number</em> of steps, so 20 steps of length 0.1 will take 10 times as long as 2 steps of length 1.
+                There is
+                less accuracy
+                <label for="sn-leapfrog" class="margin-toggle sidenote-number"></label>
+                <input type="checkbox" id="sn-leapfrog" class="margin-toggle" />
+                <span class="sidenote">
+                    Perhaps disastrously! <a href="https://arxiv.org/abs/1711.05337">Geometric integrators and the
+                        Hamiltonian Monte Carlo method</a>
+                    by Bou-Rabee and Sanz-Serna is a terrific survey.
+                </span>
+                with longer steps, and a Metropolis-Hastings correction is necessary.
+            </p>
+            <figure>
+                <video playsinline autoplay muted loop>
+                    <source src="img/step_sizes.mp4" type="video/mp4" />
+                </video>
+                <caption>In this demo, trajectories are integrated using step sizes of 0.2, 0.5, and 1.0, from left to
+                    right. The frame rate reflects the computation time for integrating each trajectory. As a technical
+                    note: this demo does not use a Metropolis correction, but each figure is using the same random
+                    stream, so the samples <i>should</i> be identical if the integration was perfect.</caption>
+            </figure>
+            <p>Balancing step size length and integration error is an exercise in stochastic root finding
+                <label for="sn-adapting" class="margin-toggle sidenote-number"></label>
+                <input type="checkbox" id="sn-adapting" class="margin-toggle" />
+                <span class="sidenote">
+                    Using something like Robbins-Monro (as in <a
+                        href="https://people.eecs.berkeley.edu/~jordan/sail/readings/andrieu-thoms.pdf">Andrieu and
+                        Thoms</a>), or a dual-averaging scheme (as in the <a href="https://arxiv.org/abs/1111.4246">NUTS
+                        paper</a>).
+                </span>
+                , with a goal of accepting around <a href="https://arxiv.org/abs/1411.6669">65% of proposals for
+                    HMC</a>, and <a
+                    href="https://mc-stan.org/docs/2_18/reference-manual/hmc-algorithm-parameters.html">80% for
+                    NUTS</a>.
+                <label for="sn-explicit" class="margin-toggle sidenote-number"></label>
+                <input type="checkbox" id="sn-explicit" class="margin-toggle" />
+                <span class="sidenote">
+                    In case your posterior is Gaussian or nearly Gaussian whose covariance has eigenvalues
+                    \(\lambda_1^2, \ldots, \lambda_N^2 > 0\), <a href="https://arxiv.org/abs/1905.09813">A
+                        Condition Number for Hamiltonian Monte Carlo</a> by Langmore, Dikovsky, Geraedts, Norgaard, and
+                    Von Behren gives the pleasant formula
+                    $$
+                    \left(\sum_{n=1}^N\left(\frac{\lambda_1}{\lambda_n}\right)^4\right)^{1/4} \approx
+                    \frac{\lambda_1}{h} 2^{7/4}\sqrt{\Phi^{-1}\left(1 - 0.5 P[\text{accept}]\right)},
+                    $$
+                    where \(h\) is the step size, and \(\Phi^{-1}\) is the inverse normal CDF.
+
+                </span>
+            </p>
+        </section>
+        <section>
+            <h2>Another way to think about integration error</h2>
+            <p>
+                Just for fun, we can consider trying to integrate along a trajectory of fixed length, while steadily
+                increasing the step size, and watching the integration error.
+                <label for="sn-divergence" class="margin-toggle sidenote-number"></label>
+                <input type="checkbox" id="sn-divergence" class="margin-toggle" />
+                <span class="sidenote">
+                    It is worth mentioning that the total energy (log probability of the position plus log
+                    probability of the momentum) along a Hamiltonian trajectory should remain constant. In case the
+                    total energy at a point is more than 500 less than at the start, software like Stan, PyMC3, and
+                    TensorFlow Probability will label the trajectory a <em>divergence</em> and short-circuit
+                    integration, rejecting the proposal.
+                </span>
+                <figure>
+                    <video playsinline autoplay muted loop>
+                        <source src="img/change_step.mp4" type="video/mp4" />
+                    </video>
+                    <caption>
+                        Specifically, the trajectory in black here has length 10, and we start using 100 steps of size
+                        0.1, then steadily increase the step size and decrease the number of steps, until we have 16
+                        steps of length 0.6 each at the end. Notice that the total error gets pretty egregious at the
+                        end, but the first few steps remain fairly accurate.
+
+                </figure>
+            </p>
+        </section>
+        <section>
+            <h2>Mass matrix adaptation</h2>
+            <p>
+                The mass matrix is the matrix \(M\) from earlier, which we get to choose when we choose a momentum
+                distribution for HMC
+                <label for="sn-mass-matrix" class="margin-toggle sidenote-number"></label>
+                <input type="checkbox" id="sn-mass-matrix" class="margin-toggle" />
+                <span class="sidenote">
+                    So \(M^{-1}\) will be the covariance for a multivariate Gaussian that the momenta are drawn from.
+                    It may be more pleasant to think of the mass matrix as the inverse of the gradient of the kinetic
+                    energy.
+                </span>
+                :
+                $$
+                \begin{align}
+                \frac{d \mathbf{q}}{dt} &= M^{-1}\mathbf{p} \\
+                \frac{d \mathbf{p}}{dt} &= - \frac{\partial}{\partial \mathbf{q}} \log \pi,
+                \end{align}
+                $$
+                Using a mass matrix is equivalent
+                <label for="sn-equiv" class="margin-toggle sidenote-number"></label>
+                <input type="checkbox" id="sn-equiv" class="margin-toggle" />
+                <span class="sidenote">
+                    I can't believe it took this long to cite <a href="https://arxiv.org/abs/1206.1901">Radford
+                        Neal</a>.
+                </span>
+                to the change of coordinates \(X \rightarrow LX\), where \(M^{-1} = LL^T\). This transformation is shown
+                below:
+            </p>
+            <figure>
+                <video playsinline autoplay muted loop>
+                    <source src="img/mass_adapt.mp4" type="video/mp4" />
+                </video>
+                <caption>
+                    This is a Gaussian with diagonal covariance (4, 0.25), smoothly transitioning under \(F(x_1,
+                    x_2) = (2x_1, 0.5x_2)\) to a standard normal in the new coordinate system. The animation is
+                    meant to convey the online adaptation that is actually used to estimate the mass matrix.
+                </caption>
+            </figure>
+            <p>
+                The HMC sampler is particularly efficient on a standard normal target distribution, so we try to
+                choose a mass matrix so that this equivalent transformation causes our distribution to transform
+                into a standard normal.
+            </p>
+            <p>
+                More explicitly:
+            </p>
+            <div class="epigraph">
+                <blockquote>Given an estimate of the posterior covariance \(C\), we will set our mass matrix to be
+                    \(C^{-1}\).
+                </blockquote>
+            </div>
+            <p>
+                In fact, this is how mass matrix estimation works (at least in TensorFlow Probability, Stan, and PyMC3):
+                after a few draws with the identity mass matrix, the mass matrix is set to to the running covariance.
+                <label for="sn-windows" class="margin-toggle sidenote-number"></label>
+                <input type="checkbox" id="sn-windows" class="margin-toggle" />
+                <span class="sidenote">
+                    Really, there is a windowed scheme: every so often, we throw out earlier draws, and only use more
+                    recent ones. See <a href="https://colcarroll.github.io/hmc_tuning_talk/">this talk</a> for more
+                    detail on that.
+                </span>
+                We spend some portion of our computational budget on estimating the mass matrix and step size, before
+                fixing these two parameters and actually running MCMC.
+                <label for="sn-mcmc" class="margin-toggle sidenote-number"></label>
+                <input type="checkbox" id="sn-mcmc" class="margin-toggle" />
+                <span class="sidenote">
+                    While changing step sizes and momentum distributions, we are not necessarily sampling from the
+                    target distribution, so the tuning samples are discarded. On the other hand, this tuning period
+                    obviates the need for a "burn-in", since it usually provides enough chance for the sampler to
+                    get near the typical set.
+                </span>
+                <figure>
+                    <video playsinline autoplay muted loop>
+                        <source src="img/mass_estimate.mp4" type="video/mp4" />
+                    </video>
+                    <caption>
+                        This is again a Gaussian with diagonal covariance (4, 0.25), and we are using HMC to estimate
+                        the covariance. After 10 draws, we begin using the inverse of that estimate as a mass matrix.
+                        The black ellipse is the estimated covariance, and the points drawn during tuning are marked.
+                        The step size here is actually jittered between 0.07 and 0.1 to avoid too much oscillation.
+                    </caption>
+                </figure>
+            </p>
+            <p>
+                As an illustration of what can go wrong, we run the same adaptation scheme on our running
+                mixture-of-Gaussian example, and we see that it ends up adapting to a single mode.
+                <figure>
+                    <video playsinline autoplay muted loop>
+                        <source src="img/mog_mass_estimate.mp4" type="video/mp4" />
+                    </video>
+                    <caption>
+                        The mixture of Gaussian target distribution with the same setup as above. Note that mass matrix
+                        adaptation <em>hurts</em> convergence here, since it specializes the sampler to a single mode.
+                        The covariance estimate appears after 10 draws, and is located where the origin happens to be.
+                    </caption>
+                </figure>
+            </p>
+        </section>
+        <section>
+            <h2>Conclusions</h2>
+            <p>
+                This is not overly novel or new, but is hopefully a graphical, intuitive demonstration of some of the
+                parameters that are tuned and discussed in gradient-based MCMC. Remember that pictures are not proof,
+                and that low dimensional intuition is not always trustworthy in the sorts of high dimensions where we
+                often use HMC or NUTS.
+            </p>
+        </section>
+    </article>
+</body>
+
+</html>
