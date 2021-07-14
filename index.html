@@ -128,8 +128,18 @@
                     integrator, and both use step size 0.05 for 1,000 steps.
                 </caption>
             </figure>
-            <p>We can compare this to a leapfrog integrator with even a very large step size, where the errors will not
-                compound, though there is eventually some very obvious differences in the trajectories!</p>
+            <p>We can compare this to a leapfrog integrator with even a very large step size, where the errors will
+                compound
+                more slowly
+                <label for="sn-symplectic" class="margin-toggle sidenote-number"></label>
+                <input type="checkbox" id="sn-symplectic" class="margin-toggle" />
+                <span class="sidenote">
+                    The error compounds like \(\mathcal{O}(h^3)\), instead of \(\mathcal{O}(h^2)\) for Euler's method (where \(h\) is the
+                    step size). Additionally, and arguably more importantly for HMC, the leapfrog integrator is
+                    symplectic, so volumes are preserved, the integrator doesn't spiral out to infinity, and the changes
+                    in energy tend to stay bounded.
+                </span>
+                , though there is eventually some very obvious differences in the trajectories!</p>
             <figure>
                 <video playsinline autoplay muted loop>
                     <source src="img/change_int_len.mp4" type="video/mp4" />
@@ -340,6 +350,13 @@
                 parameters that are tuned and discussed in gradient-based MCMC. Remember that pictures are not proof,
                 and that low dimensional intuition is not always trustworthy in the sorts of high dimensions where we
                 often use HMC or NUTS.
+            </p>
+        </section>
+
+        <section>
+            <h2>Thanks</h2>
+            <p>
+                Particularly to Ian Langmore, Pavel Sountsov, and Matt Hoffman for patient explanations of much of this.
             </p>
         </section>
     </article>
